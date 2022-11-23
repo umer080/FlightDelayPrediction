@@ -1,4 +1,5 @@
 import json
+import pickle
 import joblib
 import requests
 import numpy as np
@@ -9,7 +10,8 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 app = Flask(__name__)
 
-model = joblib.load("dt_model.sav")
+filename="dt_model.sav"
+loaded_model = pickle.load(open(filename, 'rb'))
 
 
 @app.route("/", methods=["POST"])
