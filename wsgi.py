@@ -1,20 +1,19 @@
 import json
-import pickle
 import joblib
 import requests
 import numpy as np
-import pandas as pd
-from math import expm1
+from pickle import load
+from datetime import datetime
 from flask import Flask, jsonify, request
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
+# from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 app = Flask(__name__)
 
-filename="dt_model.sav"
-loaded_model = pickle.load(open(filename, 'rb'))
+model = load(open('model.pkl', 'rb'))
+scaler = load(open('scaler.pkl', 'rb'))
+minmax = load(open('minmax.pkl', 'rb'))
 
-
-@app.route("/", methods=["POST"])
+@app.route("/predict", methods=["POST"])
 def index():
     data = request.json
     print(data)
@@ -40,12 +39,40 @@ def index():
     response=requests.get(url)
     #response.raise_for_status()
     JsonResponse=response.json()
-    print(JsonResponse)
-    hours = JsonResponse['forecast']['forecastday'][0]['hour']
+    # print(JsonResponse)
+    # hours = JsonResponse['forecast']['forecastday'][0]['hour']
+    day1 = JsonResponse['forecast']['forecastday'][0]['date']
+    day2 = JsonResponse['forecast']['forecastday'][1]['date']
+    day3 = JsonResponse['forecast']['forecastday'][2]['date']
+
+    day_matching = departure_time.split(" ")[0]
+
+    hours = []
+    if day_matching == day1:
+        hours = JsonResponse['forecast']['forecastday'][0]['hour']
+
+    elif day_matching == day2:
+        hours = JsonResponse['forecast']['forecastday'][1]['hour']
+        
+    elif day_matching == day3:
+        hours = JsonResponse['forecast']['forecastday'][2]['hour']
+
     for hour in hours:
-        print(hour["time_epoch"])
-        if departure_time==hour["time_epoch"]:
+        print(hour["time"])
+        
+        if departure_time==hour["time"]:
             print(departure_time)
+            datetime_object = datetime.strptime(departure_time, '%Y-%m-%d %H:%M')
+            week_day = datetime_object.weekday()
+            if week_day in [5,6]:
+                weekend=1
+            else:
+                weekend=0
+
+            hourly_time = datetime_object.strftime("%H:%M")
+            print("time:", hourly_time)
+            hourly_time = hourly_time.replace(":","")
+
             temperature=hour["temp_f"]
             dew_point=hour['dewpoint_f']
             humidity=hour['humidity']
@@ -59,21 +86,20 @@ def index():
             print(pressure)
             print(precipitation)
             
-            ON_WEEKEND=1
-
-            sample = np.array([[ ON_WEEKEND, airline, departure_time, origin, dest, temperature, dew_point, humidity, wind_speed, pressure, precipitation]])  # randomly choose a sample from the test set
+            # sample = np.array([[ weekend, airline, hourly_time, origin, dest, temperature, dew_point, humidity, wind_speed, pressure, precipitation]])  # randomly choose a sample from the test set
+            sample = [ weekend, airline, hourly_time, origin, dest, temperature, dew_point, humidity, wind_speed, pressure, precipitation]
             print(sample)
             
-            to_predict = np.array(sample).reshape(1, 11)
+            sample = np.array(sample).reshape(1, 11)
+            X_test_scaled = scaler.transform(sample)
+            X_test_scaled = minmax.transform(X_test_scaled)
+            print(X_test_scaled)
 
-            to_predict = StandardScaler().fit_transform(to_predict)
-            to_predict = MinMaxScaler().fit_transform(to_predict)
-
-            print(to_predict)
-
-            prediction = model.predict(to_predict)
+            prediction = model.predict(X_test_scaled)
 
             return jsonify({"Delay": str(prediction[0])})
     else:
         return jsonify({"Error": str("Time not matched")})
 
+if __name__=="__main__":
+    app.run(host= '0.0.0.0')
